@@ -1,0 +1,56 @@
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactive Route Map</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+</head>
+<body>
+  <div class="controls">
+    <label>
+      Year
+      <select id="yearFilter"></select>
+    </label>
+
+    <label>
+      Carrier
+      <select id="carrierFilter"></select>
+    </label>
+
+    <label>
+      Aircraft
+      <select id="aircraftFilter"></select>
+    </label>
+
+<label>
+Alliance
+<select id="allianceFilter"></select>
+</label>
+
+<label>
+Aircraft Make
+<select id="aircraftMakeFilter"></select>
+</label>
+
+<div class="control-actions">
+    <button id="resetFilters" type="button">Reset filters</button>
+    <span id="routeCount" class="route-count" aria-live="polite">
+      Showing 0 routes
+    </span>
+</div>
+</div>
+
+<div id="carrierLegend" class="carrier-legend" aria-label="Carrier color legend">
+</div>
+
+<div id="mapWrap">
+<svg id="map" viewBox="0 0 1200 650" role="img" aria-label="Interactive flight route map">
+</svg>
+<div id="tooltip" hidden></div>
+</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="app.js"></script>
+</body>
+</html>

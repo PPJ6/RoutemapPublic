@@ -1,0 +1,215 @@
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  gap: 0.25rem;
+}
+
+.control-actions {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+#resetFilters {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #aaa;
+  border-radius: 0.35rem;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+}
+
+#resetFilters:hover {
+  background: #eeeeee;
+}
+
+.route-count {
+  align-self: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.carrier-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #ddd;
+  background: #ffffff;
+  font-size: 0.8rem;
+}
+
+.carrier-legend.is-empty {
+  display: none;
+}
+
+.legend-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+ 
+.legend-title {
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #444444;
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.legend-swatch {
+  width: 1.4rem;
+  height: 0.22rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-line-sample {
+  width: 42px;
+  height: 10px;
+  overflow: visible;
+}
+ 
+.legend-line-sample line {
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+#mapWrap {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+#map {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ocean {
+  fill: #f8fbff;
+}
+
+.country {
+  fill: #e6e6e6;
+  stroke: #ffffff;
+  stroke-width: 0.5;
+}
+
+.route {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-opacity: 0.55;
+  pointer-events: stroke;
+  cursor: pointer;
+  transition:
+    stroke-width 120ms ease,
+    stroke-opacity 120ms ease;
+}
+ 
+.route.is-hovered,
+.route.is-selected {
+  stroke-opacity: 1;
+}
+
+.airport {
+  pointer-events: none;
+}
+
+.airport circle {
+  fill: #ffffff;
+  stroke: #222222;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+#tooltip {
+  position: absolute;
+  z-index: 5;
+  max-width: 340px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #bbb;
+  border-radius: 0.4rem;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+  font-size: 0.85rem;
+  pointer-events: auto;
+}
+ 
+.tooltip-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+ 
+.tooltip-close {
+  border: 0;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+ 
+.tooltip-route-name {
+  margin-bottom: 0.35rem;
+  color: #444444;
+}
+ 
+.tooltip-flight-list {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+ 
+.tooltip-flight {
+  padding-top: 0.45rem;
+  border-top: 1px solid #dddddd;
+}
+ 
+#tooltip a {
+  color: inherit;
+  text-decoration: underline;
+}
+ 
+.review-missing {
+  color: #666666;
+}
