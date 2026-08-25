@@ -632,7 +632,7 @@ function buildTooltipHtml(routeGroup, locked) {
       <strong>${routeTitle}</strong>
       ${closeButton}
     </div>
-    <div class="tooltip-route-name">${originName} \n ${destName}</div>
+    <div class="tooltip-route-name">${originName} <br> ${destName}</div>
     <div><strong>Alliance:</strong> ${allianceText}</div>
     <div><strong>${flightCount === 1 ? "Flight" : "Flights"}:</strong> ${flightCount}</div>
     <div class="tooltip-flight-list">
