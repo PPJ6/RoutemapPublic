@@ -259,7 +259,6 @@ function setupRouteEncodings(routes) {
     ["oneworld", "#1f77b4"],
     ["SkyTeam", "#d62728"],
     ["Unaffiliated", "#7f7f7f"],
-    ["Multiple", "#9467bd"]
   ]);
 
   const fallbackColors = d3.schemeTableau10;
