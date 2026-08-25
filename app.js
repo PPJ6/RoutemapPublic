@@ -288,7 +288,7 @@ function setupRouteEncodings(routes) {
 }
 
 function sortAllianceValues(a, b) {
-  const order = ["Star Alliance", "oneworld", "SkyTeam", "Unaffiliated", "Multiple"];
+  const order = ["Star Alliance", "oneworld", "SkyTeam", "Unaffiliated"];
   const ai = order.indexOf(a);
   const bi = order.indexOf(b);
 
