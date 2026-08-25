@@ -252,9 +252,7 @@ function validateRoutes(routes) {
 function setupRouteEncodings(routes) {
   const alliances = uniqueValues(routes, allianceKey).sort(sortAllianceValues);
 
-  if (!alliances.includes("Multiple")) {
-    alliances.push("Multiple");
-  }
+ 
 
   const preferredAllianceColors = new Map([
     ["Star Alliance", "#222222"],
