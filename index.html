@@ -35,9 +35,21 @@ Aircraft Make
 
 <div class="control-actions">
     <button id="resetFilters" type="button">Reset filters</button>
-    <span id="routeCount" class="route-count" aria-live="polite">
-      Showing 0 routes
+   <div class="route-summary">
+  <span id="routeCount" class="route-count" aria-live="polite">
+    Showing 0 routes
+  </span>
+
+  <span class="summary-divider" aria-hidden="true">|</span>
+
+  <span class="mileage-widget">
+    <span class="mileage-label">Miles flown</span>
+    <span id="mileageCounter" class="splitflap" aria-live="polite" aria-label="0 miles flown">
+      <span class="splitflap-char">0</span>
     </span>
+    <span class="mileage-unit">mi</span>
+  </span>
+</div>
 </div>
 </div>
 
