@@ -12,7 +12,8 @@ const selectors = {
   alliance: "#allianceFilter",
   aircraftMake: "#aircraftMakeFilter",
   routeCount: "#routeCount",
-  legend: "#carrierLegend"
+  legend: "#carrierLegend",
+  mileageCounter: "#mileageCounter"
 };
 
 const projection = d3.geoEqualEarth()
@@ -155,6 +156,23 @@ function normalizeRoutes(routes) {
     route.origin_lon = Number(route.origin_lon);
     route.dest_lat = Number(route.dest_lat);
     route.dest_lon = Number(route.dest_lon);
+
+    route.route_miles = firstValidNumber([
+    route.route_miles,
+    route.distance_miles,
+    route.great_circle_miles,
+    route.great_circle_distance_miles,
+    route.gc_miles,
+    route.distance_mi,
+    route.miles,
+    route["Route Miles"],
+    route["Distance Miles"],
+    route["Great Circle Miles"]
+]);
+
+if (!Number.isFinite(route.route_miles) && hasValidCoordinates(route)) {
+  route.route_miles = calculateGreatCircleMiles(route);
+}
   });
 }
 
@@ -163,6 +181,51 @@ function cleanText(value) {
     return "";
   }
 
+  function toNumber(value) {
+  const cleaned = cleanText(value).replace(/,/g, "");
+
+  if (!cleaned) {
+    return NaN;
+  }
+
+  return Number(cleaned);
+}
+
+function firstValidNumber(values) {
+  for (const value of values) {
+    const number = toNumber(value);
+
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+
+  return NaN;
+}
+
+function calculateGreatCircleMiles(route) {
+  const radiusMiles = 3958.7613;
+
+  const lat1 = toRadians(route.origin_lat);
+  const lon1 = toRadians(route.origin_lon);
+  const lat2 = toRadians(route.dest_lat);
+  const lon2 = toRadians(route.dest_lon);
+
+  const deltaLat = lat2 - lat1;
+  const deltaLon = lon2 - lon1;
+
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return radiusMiles * c;
+}
+
+function toRadians(degrees) {
+  return degrees * Math.PI / 180;
+}
   return String(value).trim();
 }
 
@@ -366,12 +429,14 @@ function populateSelect(selector, values) {
 function updateRoutes(routes) {
   const visibleRoutes = routes.filter(routeMatchesFilters);
   const validVisibleRoutes = visibleRoutes.filter(hasValidCoordinates);
-  const routeGroups = makeRouteGroups(validVisibleRoutes);
-  const allRouteGroups = makeRouteGroups(routes.filter(hasValidCoordinates));
+  const allValidRoutes = routes.filter(hasValidCoordinates);
 
-  if (lockedRouteKey && !routeGroups.some(group => group.key === lockedRouteKey)) {
-    clearLockedTooltip();
-  }
+  const routeGroups = makeRouteGroups(validVisibleRoutes);
+  applyOppositeDirectionMetadata(routeGroups);
+
+  const allRouteGroups = makeRouteGroups(allValidRoutes);
+
+  refreshLockedTooltip(routeGroups);
 
   const routeSelection = layers.routes.selectAll("path.route")
     .data(routeGroups, d => d.key)
@@ -388,26 +453,21 @@ function updateRoutes(routes) {
 
   routeSelection
     .attr("d", d => path(makeGreatCircleFeature(d)))
+    .attr("transform", d => routeOffsetTransform(d))
     .style("stroke", d => allianceColor(d.carrier_alliance))
     .style("stroke-dasharray", d => aircraftMakeDash.get(d.aircraft_make) || "none")
     .style("stroke-width", null)
     .style("stroke-opacity", null)
     .classed("is-hovered", false)
-    .classed("is-selected", d => d.key === lockedRouteKey);
+    .classed("is-selected", d => d.key === lockedRouteKey)
+    .classed("has-opposite-direction", d => d.hasOppositeDirection);
+
+  const visibleMiles = sumDisplayedMiles(validVisibleRoutes);
 
   updateRouteCount(routeGroups.length, allRouteGroups.length, validVisibleRoutes.length, routes.length);
+  updateMileageCounter(visibleMiles);
   updateMapLegend(routeGroups);
   updateAirportDots(validVisibleRoutes);
-}
-
-function routeMatchesFilters(route) {
-  return (
-    (filters.year === "All" || String(route.year) === String(filters.year)) &&
-    (filters.carrier === "All" || route.carrier_code === filters.carrier) &&
-    (filters.aircraft === "All" || route.aircraft_type === filters.aircraft) &&
-    (filters.alliance === "All" || allianceKey(route) === filters.alliance) &&
-    (filters.aircraftMake === "All" || aircraftMakeKey(route) === filters.aircraftMake)
-  );
 }
 
 function hasValidCoordinates(route) {
@@ -455,6 +515,85 @@ function makeRouteGroups(routes) {
     group.aircraft_make = summarizeGroupValue(group.records, aircraftMakeKey);
     return group;
   });
+}
+
+function applyOppositeDirectionMetadata(routeGroups) {
+  const groupsByPair = d3.group(routeGroups, unorderedRoutePairKey);
+
+  routeGroups.forEach(group => {
+    const pairGroups = groupsByPair.get(unorderedRoutePairKey(group)) || [];
+
+    group.pairGroups = pairGroups
+      .slice()
+      .sort(sortRouteGroupsForTooltip);
+
+    group.hasOppositeDirection = group.pairGroups.length > 1;
+
+    group.directionOffset = group.hasOppositeDirection
+      ? directionOffsetSign(group) * 5
+      : 0;
+  });
+}
+
+function unorderedRoutePairKey(routeGroup) {
+  return [routeGroup.origin_iata, routeGroup.dest_iata]
+    .sort()
+    .join("|");
+}
+
+function directionOffsetSign(routeGroup) {
+  return routeGroup.origin_iata < routeGroup.dest_iata ? -1 : 1;
+}
+
+function sortRouteGroupsForTooltip(a, b) {
+  return String(a.origin_iata).localeCompare(String(b.origin_iata)) ||
+    String(a.dest_iata).localeCompare(String(b.dest_iata));
+}
+
+function routeOffsetTransform(routeGroup) {
+  if (!routeGroup.directionOffset) {
+    return null;
+  }
+
+  const start = projection([routeGroup.origin_lon, routeGroup.origin_lat]);
+  const end = projection([routeGroup.dest_lon, routeGroup.dest_lat]);
+
+  if (!start || !end) {
+    return null;
+  }
+
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const length = Math.hypot(dx, dy);
+
+  if (!length) {
+    return null;
+  }
+
+  const offset = routeGroup.directionOffset;
+  const normalX = (-dy / length) * offset;
+  const normalY = (dx / length) * offset;
+
+  return `translate(${normalX},${normalY})`;
+}
+
+function refreshLockedTooltip(routeGroups) {
+  if (!lockedRouteKey) {
+    return;
+  }
+
+  const refreshedLockedGroup = routeGroups.find(group => group.key === lockedRouteKey);
+
+  if (!refreshedLockedGroup) {
+    clearLockedTooltip();
+    return;
+  }
+
+  lockedRouteGroup = refreshedLockedGroup;
+
+  if (lockedTooltipPoint) {
+    showTooltipAtPoint(lockedTooltipPoint, lockedRouteGroup, true);
+  }
 }
 
 function routeDirectionalKey(route) {
@@ -615,28 +754,79 @@ function showTooltipAtPoint(point, routeGroup, locked) {
 }
 
 function buildTooltipHtml(routeGroup, locked) {
+  const tooltipGroups = getTooltipGroups(routeGroup);
+  const allRecords = tooltipGroups.flatMap(group => group.records);
+
   const origin = escapeHtml(routeGroup.origin_iata);
   const dest = escapeHtml(routeGroup.dest_iata);
-  const routeTitle = `${origin} → ${dest}`;
-  const originName = escapeHtml(routeGroup.origin_name || routeGroup.origin_city || "");
-  const destName = escapeHtml(routeGroup.dest_name || routeGroup.dest_city || "");
-  const allianceText = escapeHtml(formatValueList(routeGroup.records, allianceKey));
-  const flightCount = routeGroup.records.length;
+
+  const title = routeGroup.hasOppositeDirection
+    ? `${origin} ↔ ${dest}`
+    : `${origin} → ${dest}`;
+
+  const allianceLabel = uniqueValues(allRecords, allianceKey).length === 1
+    ? "Alliance"
+    : "Alliances";
+
+  const allianceText = escapeHtml(formatValueList(allRecords, allianceKey));
+  const flightCount = allRecords.length;
 
   const closeButton = locked
     ? `<button class="tooltip-close" type="button" data-tooltip-close aria-label="Close tooltip">×</button>`
     : "";
 
+  const oppositeDirectionNote = routeGroup.hasOppositeDirection
+    ? `<div class="tooltip-pair-note">
+        Flights exist in both directions for this airport pair. The separated sections below keep each direction accounted for.
+      </div>`
+    : "";
+
   return `
     <div class="tooltip-header">
-      <strong>${routeTitle}</strong>
+      <strong>${title}</strong>
       ${closeButton}
     </div>
-    <div class="tooltip-route-name">${originName} <br> ${destName}</div>
-    <div><strong>Alliance:</strong> ${allianceText}</div>
-    <div><strong>${flightCount === 1 ? "Flight" : "Flights"}:</strong> ${flightCount}</div>
+
+    <div><strong>${allianceLabel}:</strong> ${allianceText}</div>
+    <div><strong>${flightCount === 1 ? "Flight segment" : "Flight segments"}:</strong> ${flightCount}</div>
+
+    ${oppositeDirectionNote}
+
     <div class="tooltip-flight-list">
-      ${routeGroup.records.map(formatFlightForTooltip).join("")}
+      ${tooltipGroups.map(group => {
+        return formatDirectionGroupForTooltip(group, group.key === routeGroup.key);
+      }).join("")}
+    </div>
+  `;
+}
+
+function getTooltipGroups(routeGroup) {
+  const pairGroups = routeGroup.pairGroups && routeGroup.pairGroups.length > 0
+    ? routeGroup.pairGroups
+    : [routeGroup];
+
+  return [
+    routeGroup,
+    ...pairGroups.filter(group => group.key !== routeGroup.key)
+  ];
+}
+
+function formatDirectionGroupForTooltip(group, isSelectedDirection) {
+  const origin = escapeHtml(group.origin_iata);
+  const dest = escapeHtml(group.dest_iata);
+
+  const selectedTag = isSelectedDirection
+    ? `<span class="tooltip-direction-tag">selected</span>`
+    : `<span class="tooltip-direction-tag">opposite</span>`;
+
+  return `
+    <div class="tooltip-direction-group ${isSelectedDirection ? "is-selected" : ""}">
+      <div class="tooltip-direction-heading">
+        <strong>${origin} → ${dest}</strong>
+        ${group.hasOppositeDirection ? selectedTag : ""}
+      </div>
+
+      ${group.records.map(formatFlightForTooltip).join("")}
     </div>
   `;
 }
@@ -644,6 +834,7 @@ function buildTooltipHtml(routeGroup, locked) {
 function formatFlightForTooltip(route) {
   const flightLabel = escapeHtml(route.flight_no || `${route.origin_iata} → ${route.dest_iata}`);
   const carrier = escapeHtml(route.carrier_name || route.carrier_code || "Unknown carrier");
+  const alliance = escapeHtml(route.carrier_alliance || "Unaffiliated");
   const year = escapeHtml(route.year || "Unknown year");
   const aircraftType = escapeHtml(route.aircraft_type || "Unknown aircraft");
   const reviewLine = formatReviewLine(route);
@@ -651,7 +842,7 @@ function formatFlightForTooltip(route) {
   return `
     <div class="tooltip-flight">
       <div><strong>${flightLabel}</strong> · ${year}</div>
-      <div>${carrier} · ${aircraftType}</div>
+      <div>${carrier} · ${alliance} · ${aircraftType}</div>
       <div>${reviewLine}</div>
     </div>
   `;
@@ -700,6 +891,42 @@ function updateRouteCount(visibleRouteCount, totalRouteCount, visibleFlightCount
   );
 }
 
+function sumDisplayedMiles(routeRecords) {
+  return d3.sum(routeRecords, route => {
+    const miles = getRouteMiles(route);
+    return Number.isFinite(miles) ? miles : 0;
+  });
+}
+
+function getRouteMiles(route) {
+  return Number.isFinite(route.route_miles) ? route.route_miles : 0;
+}
+
+function updateMileageCounter(miles) {
+  const counter = d3.select(selectors.mileageCounter);
+
+  if (counter.empty()) {
+    return;
+  }
+
+  const roundedMiles = Number.isFinite(miles) ? Math.round(miles) : 0;
+  const formatted = roundedMiles.toLocaleString("en-US");
+
+  counter
+    .attr("aria-label", `${formatted} miles flown`)
+    .html(
+      formatted
+        .split("")
+        .map(char => {
+          if (char === ",") {
+            return `<span class="splitflap-separator">,</span>`;
+          }
+
+          return `<span class="splitflap-char">${char}</span>`;
+        })
+        .join("")
+    );
+}
 function updateMapLegend(routeGroups) {
   const legend = d3.select(selectors.legend);
 
