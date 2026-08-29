@@ -1074,13 +1074,6 @@ function updateMapLegend(routeGroups) {
     dashForValue: () => "none"
   });
 
-  renderLegendSection({
-    legend,
-    title: "Aircraft make line pattern",
-    values: visibleMakes,
-    strokeForValue: () => "#555555",
-    dashForValue: value => aircraftMakeDash.get(value) || "none"
-  });
 }
 
 function renderLegendSection({ legend, title, values, strokeForValue, dashForValue }) {
