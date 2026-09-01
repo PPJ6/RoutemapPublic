@@ -24,6 +24,7 @@ const path = d3.geoPath(projection);
 
 const layers = {
   base: svg.append("g").attr("class", "base-layer"),
+  focus: svg.append("g").attr("class", "focus-layer"),
   routes: svg.append("g").attr("class", "route-layer"),
   airports: svg.append("g").attr("class", "airport-layer")
 };
@@ -1399,24 +1400,6 @@ function getCurrentRegionDefinition() {
   return regionByKey.get(filters.region) || regionByKey.get("All regions");
 }
 
-function updateProjectionForCurrentRegion(animate = true) {
-  const region = getCurrentRegionDefinition();
-
-  currentRegionKey = region.key;
-
-  projection.rotate(region.rotate || [0, 0, 0]);
-
-  if (region.isWorld) {
-    projection.fitSize([width, height], { type: "Sphere" });
-  } else {
-    projection.fitExtent(
-      [[35, 30], [width - 35, height - 30]],
-      regionToGeoJsonFeature(region)
-    );
-  }
-
-  updateBaseMapProjection(animate);
-}
 
 function updateAirportDots(visibleRoutes) {
   const visibleAirports = getVisibleAirports(visibleRoutes)
@@ -1445,11 +1428,136 @@ function updateAirportDots(visibleRoutes) {
   airportGroups
     .attr("transform", d => `translate(${d.point[0]},${d.point[1]})`);
 }
+  };
+}
+
+const REGION_FOCUS_PADDING = 35;
+
+function getCurrentRegionDefinition() {
+  return regionByKey.get(filters.region) || regionByKey.get("All regions");
+}
+
+function updateProjectionForCurrentRegion(animate = true) {
+  const region = getCurrentRegionDefinition();
+
+  currentRegionKey = region.key;
+
+  projection.rotate(region.rotate || [0, 0, 0]);
+
+  if (region.isWorld) {
+    projection.fitExtent(
+      [[0, 0], [width, height]],
+      { type: "Sphere" }
+    );
+  } else {
+    projection.fitExtent(
+      [
+        [REGION_FOCUS_PADDING, REGION_FOCUS_PADDING],
+        [width - REGION_FOCUS_PADDING, height - REGION_FOCUS_PADDING]
+      ],
+      regionToGeoJsonFeature(region)
+    );
+  }
+
+  function countryTouchesRegion(feature, region) {
+  if (region.isWorld) {
+    return true;
+  }
+
+  const bounds = d3.geoBounds(feature);
+
+  if (!bounds || !bounds[0] || !bounds[1]) {
+    return false;
+  }
+
+  const countryWest = bounds[0][0];
+  const countrySouth = bounds[0][1];
+  const countryEast = bounds[1][0];
+  const countryNorth = bounds[1][1];
+
+  if (countryNorth < region.south || countrySouth > region.north) {
+    return false;
+  }
+
+  return longitudeRangesOverlap(countryWest, countryEast, region.west, region.east);
+}
+
+function longitudeRangesOverlap(westA, eastA, westB, eastB) {
+  const rangesA = splitLongitudeRange(westA, eastA);
+  const rangesB = splitLongitudeRange(westB, eastB);
+
+  return rangesA.some(a => {
+    return rangesB.some(b => {
+      return a.west <= b.east && b.west <= a.east;
+    });
+  });
+}
+
+function splitLongitudeRange(west, east) {
+  /*
+    Handles ranges that cross the antimeridian.
+    Example: Oceania may be 95 to 240, which becomes:
+    95 to 180 and -180 to -120.
+  */
+  if (east > 180) {
+    return [
+      { west, east: 180 },
+      { west: -180, east: east - 360 }
+    ];
+  }
+
+  if (west < -180) {
+    return [
+      { west: west + 360, east: 180 },
+      { west: -180, east }
+    ];
+  }
+
+  if (east < west) {
+    return [
+      { west, east: 180 },
+      { west: -180, east }
+    ];
+  }
+
+  return [
+    { west, east }
+  ];
+}f
+  updateBaseMapProjection(region, animate);
+  updateRegionFocusBoundary(region, animate);
+
+  // Helpful while debugging.
+  // If this value does not change when selecting a region,
+  // something is resetting the projection later.
+  console.log("Region:", region.key, "Projection scale:", projection.scale());
+}
 
 function regionToGeoJsonFeature(region) {
   if (region.isWorld) {
     return { type: "Sphere" };
   }
+
+  /*
+    Most regions are simple boxes.
+    Oceania crosses the antimeridian, so it is split into two boxes.
+  */
+  if (region.east <= 180) {
+    return {
+      type: "Feature",
+      properties: {
+        name: region.label
+      },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          makeRegionBoxRing(region.west, region.east, region.south, region.north)
+        ]
+      }
+    };
+  }
+
+  const wrappedEast = region.east - 360;
 
   return {
     type: "Feature",
@@ -1457,32 +1565,122 @@ function regionToGeoJsonFeature(region) {
       name: region.label
     },
     geometry: {
-      type: "Polygon",
-      coordinates: [[
-        [region.west, region.south],
-        [region.east, region.south],
-        [region.east, region.north],
-        [region.west, region.north],
-        [region.west, region.south]
-      ]]
+      type: "MultiPolygon",
+      coordinates: [
+        [
+          makeRegionBoxRing(region.west, 180, region.south, region.north)
+        ],
+        [
+          makeRegionBoxRing(-180, wrappedEast, region.south, region.north)
+        ]
+      ]
     }
   };
 }
 
-function updateBaseMapProjection(animate = true) {
-  const basePaths = layers.base.selectAll("path");
+function makeRegionBoxRing(west, east, south, north) {
+  const step = 2;
+  const ring = [];
+
+  for (const lon of rangeInclusive(west, east, step)) {
+    ring.push([lon, south]);
+  }
+
+  for (const lat of rangeInclusive(south, north, step).slice(1)) {
+    ring.push([east, lat]);
+  }
+
+  for (const lon of rangeInclusive(east, west, step).slice(1)) {
+    ring.push([lon, north]);
+  }
+
+  for (const lat of rangeInclusive(north, south, step).slice(1)) {
+    ring.push([west, lat]);
+  }
+
+  ring.push([west, south]);
+
+  return ring;
+}
+
+function rangeInclusive(start, end, step) {
+  const values = [];
+  const direction = end >= start ? 1 : -1;
+  const signedStep = Math.abs(step) * direction;
+
+  let value = start;
+
+  if (direction > 0) {
+    while (value < end) {
+      values.push(value);
+      value += signedStep;
+    }
+  } else {
+    while (value > end) {
+      values.push(value);
+      value += signedStep;
+    }
+  }
+
+  values.push(end);
+
+  return values;
+}
+
+function updateBaseMapProjection(region, animate = true) {
+  const ocean = layers.base.selectAll("path.ocean");
+  const countries = layers.base.selectAll("path.country");
+
+  ocean.classed("is-region-focused", !region.isWorld);
+
+  countries
+    .classed("is-inside-focus", d => !region.isWorld && countryTouchesRegion(d, region))
+    .classed("is-outside-focus", d => !region.isWorld && !countryTouchesRegion(d, region));
+
+  if (region.isWorld) {
+    countries
+      .classed("is-inside-focus", false)
+      .classed("is-outside-focus", false);
+  }
+
+  const paths = layers.base.selectAll("path");
 
   if (animate) {
-    basePaths
+    paths
       .transition()
       .duration(650)
       .ease(d3.easeCubicOut)
       .attr("d", path);
   } else {
-    basePaths.attr("d", path);
+    paths.attr("d", path);
   }
 }
 
+function updateRegionFocusBoundary(region, animate = true) {
+  const boundaryData = region.isWorld
+    ? []
+    : [regionToGeoJsonFeature(region)];
+
+  const boundary = layers.focus.selectAll("path.region-focus-boundary")
+    .data(boundaryData);
+
+  boundary.exit().remove();
+
+  const merged = boundary.enter()
+    .append("path")
+    .attr("class", "region-focus-boundary")
+    .merge(boundary);
+
+  if (animate) {
+    merged
+      .transition()
+      .duration(650)
+      .ease(d3.easeCubicOut)
+      .attr("d", path);
+  } else {
+    merged.attr("d", path);
+  }
+}
 function isWorldRegion() {
   return getCurrentRegionDefinition().isWorld;
 }
