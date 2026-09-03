@@ -54,6 +54,56 @@ body {
   flex-wrap: wrap;
 }
 
+.route-group {
+  cursor: pointer;
+}
+
+.route-main {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-opacity: 0.72;
+  pointer-events: none;
+  transition:
+    stroke-width 120ms ease,
+    stroke-opacity 120ms ease;
+}
+
+.route-faded {
+  fill: none;
+  stroke-width: 1.25;
+  stroke-opacity: 0.16;
+  pointer-events: none;
+}
+
+.route-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.route-group.is-hovered .route-main,
+.route-group.is-selected .route-main {
+  stroke-width: 3.5;
+  stroke-opacity: 1;
+}
+
+.route-group.is-hovered .route-faded,
+.route-group.is-selected .route-faded {
+  stroke-width: 2.6;
+  stroke-opacity: 0.35;
+}
+
+.region-focus-note {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  color: #555555;
+  background: #fafafa;
+  border-bottom: 1px solid #dddddd;
+}
+
 .summary-divider {
   color: #999999;
 }
@@ -256,10 +306,38 @@ body {
 }
 
 .country {
-  fill: #e6e6e6;
-  stroke: #7e8280;
-  stroke-width: 0.5;
+  transition:
+	opacity 180ms ease,
+	fill 180ms ease,
+	stroke-opacity 180ms ease;
+	fill: #e6e6e6;
+ 	stroke: #7e8280;
+ 	stroke-width: 0.5;
 }
+
+.country.is-inside-focus {
+	opacity: 1;
+}
+
+.country.is-outside-focus {
+	opacity: 0.18;
+	fill: #d8d8d8;
+	stroke-opacity: 0.22;
+}
+
+.ocean.is-region-focused {
+	fill: #fbfbfb;
+}
+
+.region-focus-boundary {
+	fill: none;
+	stroke: #555555;
+	stroke-width: 1;
+	stroke-dash array: 4 4;
+	stroke-opacity: 0.35;
+	pointer-events: none;
+}
+
 
 .route {
   fill: none;
