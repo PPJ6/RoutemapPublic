@@ -11,6 +11,7 @@ const selectors = {
   aircraft: "#aircraftFilter",
   alliance: "#allianceFilter",
   aircraftMake: "#aircraftMakeFilter",
+  region: "#regionFilter",
   routeCount: "#routeCount",
   mileageCounter: "#mileageCounter",
   legend: "#carrierLegend"
@@ -23,6 +24,7 @@ const path = d3.geoPath(projection);
 
 const layers = {
   base: svg.append("g").attr("class", "base-layer"),
+focus: svg.append("g").attr("class", "focus-layer"),
   routes: svg.append("g").attr("class", "route-layer"),
   airports: svg.append("g").attr("class", "airport-layer")
 };
@@ -32,8 +34,78 @@ const filters = {
   carrier: "All",
   aircraft: "All",
   alliance: "All",
-  aircraftMake: "All"
+  aircraftMake: "All",
+  region: "All regions"
 };
+
+const regionDefinitions = [
+  {
+    key: "All regions",
+    label: "All regions",
+    isWorld: true,
+    rotate: [0, 0, 0]
+  },
+  {
+    key: "North America",
+    label: "North America",
+    west: -170,
+    east: -50,
+    south: 7,
+    north: 85,
+    rotate: [105, 0, 0]
+  },
+  {
+    key: "Central and South America",
+    label: "Central and South America",
+    west: -120,
+    east: -30,
+    south: -60,
+    north: 35,
+    rotate: [75, 0, 0]
+  },
+  {
+    key: "Oceania",
+    label: "Oceania",
+    west: 95,
+    east: 240,
+    south: -55,
+    north: 30,
+    rotate: [-165, 0, 0]
+  },
+  {
+    key: "Asia",
+    label: "Asia",
+    west: 25,
+    east: 180,
+    south: -12,
+    north: 82,
+    rotate: [-95, 0, 0]
+  },
+  {
+    key: "Europe",
+    label: "Europe",
+    west: -25,
+    east: 45,
+    south: 34,
+    north: 72,
+    rotate: [-15, 0, 0]
+  },
+  {
+    key: "Africa",
+    label: "Africa",
+    west: -20,
+    east: 55,
+    south: -38,
+    north: 38,
+    rotate: [-20, 0, 0]
+  }
+];
+
+const regionByKey = new Map(
+  regionDefinitions.map(region => [region.key, region])
+);
+
+let currentRegionKey = "All regions";
 
 let allianceColor = d3.scaleOrdinal(d3.schemeTableau10);
 let aircraftMakeDash = new Map();
@@ -444,11 +516,16 @@ function setupFilters(routes) {
   populateSelect(selectors.aircraft, uniqueValues(routes, d => d.aircraft_type).sort());
   populateSelect(selectors.alliance, uniqueValues(routes, allianceKey).sort(sortAllianceValues));
   populateSelect(selectors.aircraftMake, uniqueValues(routes, aircraftMakeKey).sort());
-
+  populateSelect(selectors.region, regionDefinitions.map(region => region.label), false);
   d3.select(selectors.year).on("change", event => {
     filters.year = event.target.value;
     updateRoutes(routes);
   });
+
+d3.select(selectors.region).on("change", event => {
+  filters.region = event.target.value;
+  updateRoutes(routes);
+});
 
   d3.select(selectors.carrier).on("change", event => {
     filters.carrier = event.target.value;
@@ -476,18 +553,18 @@ function setupFilters(routes) {
     filters.aircraft = "All";
     filters.alliance = "All";
     filters.aircraftMake = "All";
-
+    filters.region = "All regions";
     d3.select(selectors.year).property("value", "All");
     d3.select(selectors.carrier).property("value", "All");
     d3.select(selectors.aircraft).property("value", "All");
     d3.select(selectors.alliance).property("value", "All");
     d3.select(selectors.aircraftMake).property("value", "All");
-
+    d3.select(selectors.region).property("value", "All regions");
     updateRoutes(routes);
   });
 }
 
-function populateSelect(selector, values) {
+function populateSelect(selector, values, includeAll = true) {
   const select = d3.select(selector);
 
   if (select.empty()) {
@@ -495,14 +572,17 @@ function populateSelect(selector, values) {
     return;
   }
 
+  const optionValues = includeAll ? ["All", ...values] : values;
+
   select.selectAll("option")
-    .data(["All", ...values])
+    .data(optionValues)
     .join("option")
     .attr("value", d => d)
     .text(d => d);
 }
 
 function updateRoutes(routes) {
+ updateProjectionForCurrentRegion(true);
   const visibleRoutes = routes.filter(routeMatchesFilters);
   const validVisibleRoutes = visibleRoutes.filter(hasValidCoordinates);
   const allValidRoutes = routes.filter(hasValidCoordinates);
@@ -516,35 +596,78 @@ function updateRoutes(routes) {
 
   refreshLockedTooltip(routeGroups);
 
-  const routeSelection = layers.routes.selectAll("path.route")
-    .data(routeGroups, d => d.key)
-    .join(
-      enter => enter.append("path")
-        .attr("class", "route")
+
+const routeSelection = layers.routes.selectAll("g.route-group")
+  .data(routeGroups, d => d.key)
+  .join(
+    enter => {
+      const group = enter.append("g")
+        .attr("class", "route-group")
         .on("mouseenter", routeMouseEnter)
         .on("mousemove", routeMouseMove)
         .on("mouseleave", routeMouseLeave)
-        .on("click", routeMouseClick),
-      update => update,
-      exit => exit.remove()
-    );
+        .on("click", routeMouseClick);
 
-  routeSelection
-    .attr("d", d => path(makeGreatCircleFeature(d)))
-    .attr("transform", d => routeOffsetTransform(d))
-    .style("stroke", d => allianceColor(d.carrier_alliance))
-    .style("stroke-dasharray", d => aircraftMakeDash.get(d.aircraft_make) || "none")
-    .style("stroke-width", null)
-    .style("stroke-opacity", null)
-    .classed("is-hovered", false)
-    .classed("is-selected", d => d.key === lockedRouteKey)
-    .classed("has-opposite-direction", d => d.hasOppositeDirection);
+      group.append("path")
+        .attr("class", "route-faded");
 
-  routeSelection.each(function(d) {
-    if (d.key === lockedRouteKey) {
-      applySelectedRouteStyle(d3.select(this), d);
-    }
-  });
+      group.append("path")
+        .attr("class", "route-main");
+
+      group.append("path")
+        .attr("class", "route-hit");
+
+      return group;
+    },
+    update => update,
+    exit => exit.remove()
+  );
+
+routeSelection
+  .attr("transform", d => routeOffsetTransform(d))
+  .classed("is-hovered", false)
+  .classed("is-selected", d => d.key === lockedRouteKey)
+  .classed("has-opposite-direction", d => d.hasOppositeDirection);
+
+routeSelection.each(function(routeGroup) {
+  const group = d3.select(this);
+  const segments = splitRouteByCurrentRegion(routeGroup);
+
+  const insideFeature = multiLineFeature(segments.inside, routeGroup);
+  const outsideFeature = multiLineFeature(segments.outside, routeGroup);
+  const fullFeature = makeGreatCircleFeature(routeGroup);
+
+  group.select("path.route-main")
+    .datum(routeGroup)
+    .transition()
+    .duration(650)
+    .ease(d3.easeCubicOut)
+    .attr("d", insideFeature ? path(insideFeature) : null)
+    .style("stroke", allianceColor(routeGroup.carrier_alliance))
+    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
+
+  group.select("path.route-faded")
+    .datum(routeGroup)
+    .transition()
+    .duration(650)
+    .ease(d3.easeCubicOut)
+    .attr("d", outsideFeature ? path(outsideFeature) : null)
+    .style("stroke", allianceColor(routeGroup.carrier_alliance))
+    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
+
+  group.select("path.route-hit")
+    .datum(routeGroup)
+    .transition()
+    .duration(650)
+    .ease(d3.easeCubicOut)
+    .attr("d", path(fullFeature));
+});
+
+routeSelection.each(function(d) {
+  if (d.key === lockedRouteKey) {
+    applySelectedRouteStyle(d3.select(this), d);
+  }
+});
 
   const visibleMiles = sumDisplayedMiles(validVisibleRoutes);
 
@@ -566,7 +689,8 @@ function routeMatchesFilters(route) {
     (filters.carrier === "All" || route.carrier_code === filters.carrier) &&
     (filters.aircraft === "All" || route.aircraft_type === filters.aircraft) &&
     (filters.alliance === "All" || allianceKey(route) === filters.alliance) &&
-    (filters.aircraftMake === "All" || aircraftMakeKey(route) === filters.aircraftMake)
+    (filters.aircraftMake === "All" || aircraftMakeKey(route) === filters.aircraftMake) &&
+    routeTouchesCurrentRegion(route)
   );
 }
 
@@ -703,29 +827,118 @@ function sortRouteGroupsForTooltip(a, b) {
     String(a.dest_iata).localeCompare(String(b.dest_iata));
 }
 
-function makeGreatCircleFeature(routeGroup) {
+function makeGreatCircleCoordinates(routeGroup) {
   const start = [routeGroup.origin_lon, routeGroup.origin_lat];
   const end = [routeGroup.dest_lon, routeGroup.dest_lat];
   const interpolate = d3.geoInterpolate(start, end);
 
+  return d3.range(0, 1.0001, 0.01).map(interpolate);
+}
+
+function makeGreatCircleFeature(routeGroup) {
   return {
     type: "Feature",
     properties: routeGroup,
     geometry: {
       type: "LineString",
-      coordinates: d3.range(0, 1.001, 0.02).map(interpolate)
+      coordinates: makeGreatCircleCoordinates(routeGroup)
+    }
+  };
+}
+
+function splitRouteByCurrentRegion(routeGroup) {
+  const coordinates = makeGreatCircleCoordinates(routeGroup);
+
+  if (isWorldRegion()) {
+    return {
+      inside: [coordinates],
+      outside: []
+    };
+  }
+
+  const insideSegments = [];
+  const outsideSegments = [];
+
+  let currentSegment = [];
+  let currentInside = null;
+
+  coordinates.forEach(coord => {
+    const isInside = coordinateIsInCurrentRegion(coord[0], coord[1]);
+
+    if (currentInside === null) {
+      currentInside = isInside;
+      currentSegment = [coord];
+      return;
+    }
+
+    if (isInside === currentInside) {
+      currentSegment.push(coord);
+      return;
+    }
+
+    if (currentSegment.length > 1) {
+      if (currentInside) {
+        insideSegments.push(currentSegment);
+      } else {
+        outsideSegments.push(currentSegment);
+      }
+    }
+
+    currentSegment = [
+      currentSegment[currentSegment.length - 1],
+      coord
+    ];
+
+    currentInside = isInside;
+  });
+
+  if (currentSegment.length > 1) {
+    if (currentInside) {
+      insideSegments.push(currentSegment);
+    } else {
+      outsideSegments.push(currentSegment);
+    }
+  }
+
+  return {
+    inside: insideSegments,
+    outside: outsideSegments
+  };
+}
+
+function multiLineFeature(segments, properties = {}) {
+  const usableSegments = segments.filter(segment => segment.length > 1);
+
+  if (usableSegments.length === 0) {
+    return null;
+  }
+
+  return {
+    type: "Feature",
+    properties,
+    geometry: {
+      type: "MultiLineString",
+      coordinates: usableSegments
     }
   };
 }
 
 function routeMouseEnter(event, routeGroup) {
-  d3.select(event.currentTarget)
+  const group = d3.select(event.currentTarget);
+
+  group
     .raise()
-    .classed("is-hovered", true)
+    .classed("is-hovered", true);
+
+  group.select("path.route-main")
     .style("stroke", "#d62728")
     .style("stroke-width", 3.5)
-    .style("stroke-opacity", 1)
-    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
+    .style("stroke-opacity", 1);
+
+  group.select("path.route-faded")
+    .style("stroke", "#d62728")
+    .style("stroke-width", 2.6)
+    .style("stroke-opacity", 0.35);
 
   if (lockedRouteKey === routeGroup.key && lockedTooltipPoint) {
     showTooltipAtPoint(lockedTooltipPoint, lockedRouteGroup || routeGroup, true);
@@ -744,10 +957,10 @@ function routeMouseMove(event, routeGroup) {
 }
 
 function routeMouseLeave(event, routeGroup) {
-  const routePath = d3.select(event.currentTarget);
+  const group = d3.select(event.currentTarget);
 
   if (lockedRouteKey === routeGroup.key) {
-    applySelectedRouteStyle(routePath, routeGroup);
+    applySelectedRouteStyle(group, routeGroup);
 
     if (lockedTooltipPoint) {
       showTooltipAtPoint(lockedTooltipPoint, lockedRouteGroup || routeGroup, true);
@@ -756,9 +969,17 @@ function routeMouseLeave(event, routeGroup) {
     return;
   }
 
-  routePath
+  group
     .classed("is-hovered", false)
-    .classed("is-selected", false)
+    .classed("is-selected", false);
+
+  group.select("path.route-main")
+    .style("stroke", allianceColor(routeGroup.carrier_alliance))
+    .style("stroke-width", null)
+    .style("stroke-opacity", null)
+    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
+
+  group.select("path.route-faded")
     .style("stroke", allianceColor(routeGroup.carrier_alliance))
     .style("stroke-width", null)
     .style("stroke-opacity", null)
@@ -778,33 +999,36 @@ function routeMouseClick(event, routeGroup) {
   lockedRouteGroup = routeGroup;
   lockedTooltipPoint = d3.pointer(event, mapWrap);
 
-  layers.routes.selectAll("path.route")
+  layers.routes.selectAll("g.route-group")
     .classed("is-selected", d => d.key === lockedRouteKey)
     .each(function(d) {
-      const routePath = d3.select(this);
+      const group = d3.select(this);
 
       if (d.key === lockedRouteKey) {
-        applySelectedRouteStyle(routePath, d);
+        applySelectedRouteStyle(group, d);
       } else {
-        routePath
-          .classed("is-hovered", false)
-          .style("stroke", allianceColor(d.carrier_alliance))
-          .style("stroke-width", null)
-          .style("stroke-opacity", null)
-          .style("stroke-dasharray", aircraftMakeDash.get(d.aircraft_make) || "none");
+        restoreRouteGroupStyle(group, d);
       }
     });
 
   showTooltipAtPoint(lockedTooltipPoint, routeGroup, true);
 }
 
-function applySelectedRouteStyle(routePath, routeGroup) {
-  routePath
+function applySelectedRouteStyle(group, routeGroup) {
+  group
     .classed("is-hovered", false)
-    .classed("is-selected", true)
+    .classed("is-selected", true);
+
+  group.select("path.route-main")
     .style("stroke", "#d62728")
     .style("stroke-width", 3.5)
     .style("stroke-opacity", 1)
+    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
+
+  group.select("path.route-faded")
+    .style("stroke", "#d62728")
+    .style("stroke-width", 2.6)
+    .style("stroke-opacity", 0.35)
     .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
 }
 
@@ -813,17 +1037,31 @@ function clearLockedTooltip() {
   lockedRouteGroup = null;
   lockedTooltipPoint = null;
 
-  layers.routes.selectAll("path.route")
+  layers.routes.selectAll("g.route-group")
     .classed("is-selected", false)
     .each(function(d) {
-      d3.select(this)
-        .style("stroke", allianceColor(d.carrier_alliance))
-        .style("stroke-width", null)
-        .style("stroke-opacity", null)
-        .style("stroke-dasharray", aircraftMakeDash.get(d.aircraft_make) || "none");
+      restoreRouteGroupStyle(d3.select(this), d);
     });
 
   tooltip.attr("hidden", true);
+}
+
+function restoreRouteGroupStyle(group, routeGroup) {
+  group
+    .classed("is-hovered", false)
+    .classed("is-selected", false);
+
+  group.select("path.route-main")
+    .style("stroke", allianceColor(routeGroup.carrier_alliance))
+    .style("stroke-width", null)
+    .style("stroke-opacity", null)
+    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
+
+  group.select("path.route-faded")
+    .style("stroke", allianceColor(routeGroup.carrier_alliance))
+    .style("stroke-width", null)
+    .style("stroke-opacity", null)
+    .style("stroke-dasharray", aircraftMakeDash.get(routeGroup.aircraft_make) || "none");
 }
 
 function refreshLockedTooltip(routeGroups) {
@@ -1109,33 +1347,7 @@ function renderLegendSection({ legend, title, values, strokeForValue, dashForVal
     .text(d => d);
 }
 
-function updateAirportDots(visibleRoutes) {
-  const visibleAirports = getVisibleAirports(visibleRoutes)
-    .map(airport => ({
-      ...airport,
-      point: projection([airport.lon, airport.lat])
-    }))
-    .filter(airport => airport.point);
 
-  const airportGroups = layers.airports.selectAll("g.airport")
-    .data(visibleAirports, d => d.iata)
-    .join(
-      enter => {
-        const group = enter.append("g")
-          .attr("class", "airport");
-
-        group.append("circle")
-          .attr("r", 3.2);
-
-        return group;
-      },
-      update => update,
-      exit => exit.remove()
-    );
-
-  airportGroups
-    .attr("transform", d => `translate(${d.point[0]},${d.point[1]})`);
-}
 
 function getVisibleAirports(visibleRoutes) {
   const airports = new Map();
@@ -1182,6 +1394,140 @@ function addAirport(airports, airport) {
       lon
     });
   }
+}
+
+function getCurrentRegionDefinition() {
+  return regionByKey.get(filters.region) || regionByKey.get("All regions");
+}
+
+function updateProjectionForCurrentRegion(animate = true) {
+  const region = getCurrentRegionDefinition();
+
+  currentRegionKey = region.key;
+
+  projection.rotate(region.rotate || [0, 0, 0]);
+
+  if (region.isWorld) {
+    projection.fitSize([width, height], { type: "Sphere" });
+  } else {
+    projection.fitExtent(
+      [[35, 30], [width - 35, height - 30]],
+      regionToGeoJsonFeature(region)
+    );
+  }
+
+  updateBaseMapProjection(animate);
+}
+
+function updateAirportDots(visibleRoutes) {
+  const visibleAirports = getVisibleAirports(visibleRoutes)
+    .map(airport => ({
+      ...airport,
+      point: projection([airport.lon, airport.lat])
+    }))
+    .filter(airport => airport.point);
+
+  const airportGroups = layers.airports.selectAll("g.airport")
+    .data(visibleAirports, d => d.iata)
+    .join(
+      enter => {
+        const group = enter.append("g")
+          .attr("class", "airport");
+
+        group.append("circle")
+          .attr("r", 3.2);
+
+        return group;
+      },
+      update => update,
+      exit => exit.remove()
+    );
+
+  airportGroups
+    .attr("transform", d => `translate(${d.point[0]},${d.point[1]})`);
+}
+
+function regionToGeoJsonFeature(region) {
+  if (region.isWorld) {
+    return { type: "Sphere" };
+  }
+
+  return {
+    type: "Feature",
+    properties: {
+      name: region.label
+    },
+    geometry: {
+      type: "Polygon",
+      coordinates: [[
+        [region.west, region.south],
+        [region.east, region.south],
+        [region.east, region.north],
+        [region.west, region.north],
+        [region.west, region.south]
+      ]]
+    }
+  };
+}
+
+function updateBaseMapProjection(animate = true) {
+  const basePaths = layers.base.selectAll("path");
+
+  if (animate) {
+    basePaths
+      .transition()
+      .duration(650)
+      .ease(d3.easeCubicOut)
+      .attr("d", path);
+  } else {
+    basePaths.attr("d", path);
+  }
+}
+
+function isWorldRegion() {
+  return getCurrentRegionDefinition().isWorld;
+}
+
+function coordinateIsInCurrentRegion(lon, lat) {
+  const region = getCurrentRegionDefinition();
+
+  if (region.isWorld) {
+    return true;
+  }
+
+  return coordinateIsInRegion(lon, lat, region);
+}
+
+function coordinateIsInRegion(lon, lat, region) {
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+    return false;
+  }
+
+  if (lat < region.south || lat > region.north) {
+    return false;
+  }
+
+  const adjustedLon = normalizeLongitudeForRegion(lon, region);
+  return adjustedLon >= region.west && adjustedLon <= region.east;
+}
+
+function normalizeLongitudeForRegion(lon, region) {
+  if (region.east > 180 && lon < 0) {
+    return lon + 360;
+  }
+
+  return lon;
+}
+
+function routeTouchesCurrentRegion(route) {
+  if (isWorldRegion()) {
+    return true;
+  }
+
+  return (
+    coordinateIsInCurrentRegion(route.origin_lon, route.origin_lat) ||
+    coordinateIsInCurrentRegion(route.dest_lon, route.dest_lat)
+  );
 }
 
 function uniqueValues(data, accessor) {
