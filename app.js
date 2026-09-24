@@ -1461,9 +1461,9 @@ function regionToGeoJsonFeature(region) {
       type: "Polygon",
       coordinates: [[
         [region.west, region.south],
-        [region.east, region.south],
-        [region.east, region.north],
         [region.west, region.north],
+        [region.east, region.north],
+        [region.east, region.south],
         [region.west, region.south]
       ]]
     }
