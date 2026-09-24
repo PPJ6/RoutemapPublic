@@ -57,9 +57,9 @@ const regionDefinitions = [
   {
     key: "Central and South America",
     label: "Central and South America",
-    west: -120,
-    east: -30,
-    south: -60,
+    west: -100,
+    east: -20,
+    south: -50,
     north: 35,
     rotate: [75, 0, 0]
   },
