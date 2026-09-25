@@ -66,10 +66,10 @@ const regionDefinitions = [
   {
     key: "Oceania",
     label: "Oceania",
-    west: 55,
-    east: 210,
-    south: -55,
-    north: 5,
+    west: 20,
+    east: 200,
+    south: -40,
+    north: 0,
     rotate: [-165, 0, 0]
   },
   {
