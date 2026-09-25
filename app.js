@@ -452,6 +452,7 @@ function setupRouteEncodings(routes) {
     makes.push("Multiple");
   }
 
+  /*
   const dashPatterns = [
     "none",
     "8 4",
@@ -461,7 +462,7 @@ function setupRouteEncodings(routes) {
     "14 4",
     "6 2 2 2",
     "1 4"
-  ];
+  ]; */
 
   aircraftMakeDash = new Map(
     makes.map((make, index) => [make, dashPatterns[index % dashPatterns.length]])
