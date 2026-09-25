@@ -93,9 +93,9 @@ const regionDefinitions = [
   {
     key: "Africa",
     label: "Africa",
-    west: -20,
-    east: 35,
-    south: -10,
+    west: 0,
+    east: 30,
+    south: -40,
     north: 35,
     rotate: [-20, 0, 0]
   }
