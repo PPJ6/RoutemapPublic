@@ -462,12 +462,12 @@ function setupRouteEncodings(routes) {
     "14 4",
     "6 2 2 2",
     "1 4"
-  ]; */
+  ];
 
   aircraftMakeDash = new Map(
     makes.map((make, index) => [make, dashPatterns[index % dashPatterns.length]])
   );
-*/
+
   aircraftMakeDash.set("Multiple", "6 2 2 2"); */
 }
 
