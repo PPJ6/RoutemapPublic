@@ -467,8 +467,8 @@ function setupRouteEncodings(routes) {
   aircraftMakeDash = new Map(
     makes.map((make, index) => [make, dashPatterns[index % dashPatterns.length]])
   );
-
-  aircraftMakeDash.set("Multiple", "6 2 2 2");
+*/
+  aircraftMakeDash.set("Multiple", "6 2 2 2"); */
 }
 
 function buildHistoricalRouteIndex(routes) {
